@@ -28,7 +28,8 @@
 // 		maxDuration: This is the maximum time the pipe should wait before processing a batch
 // 		maxJobs: This is the maximum number of jobs the pipe should accept before processing a batch
 // 		batchProcessor: This is the "BatchProcessor" that the pipe will use to process batches
-// "NewPipe" returns the created pipe, and an error channel to which any errors will be sent.
+// "NewPipe" returns the created pipe, and an error channel to which any errors will be sent, and an error struct.
+// If invalid arguemnts are supplied, the error struct will be populated, if not it will be nil
 //
 // Shutting down a pipe:
 // To shutdown a pipe call the *Shutdown()* method. This will allow all submitted jobs to submit, terminate the pipe
@@ -89,7 +90,7 @@ type JobResult struct {
 type Pipe struct {
 	// Config Items
 	maxDuration    time.Duration  // maximum Duration before processing another batch (even if batch is not full)
-	maxJobs        int            // maximum number of Jobs in a batch. Process batch when job count reaches this number
+	maxJobs        uint           // maximum number of Jobs in a batch. Process batch when job count reaches this number
 	batchProcessor BatchProcessor // the BatchProcessor to process a batch of jobs
 	// Channels
 	errorCh    chan error // error channel for passing errors back to the pipe user
@@ -155,7 +156,7 @@ func (p *Pipe) run() {
 		case job := <-p.jobCh:
 			jobs = append(jobs, job)
 			// if we have reached max jobs for a batch, process the batch
-			if len(jobs) >= p.maxJobs {
+			if len(jobs) >= int(p.maxJobs) {
 				sendJobs()
 			}
 		case <-p.shutdownCh:
@@ -213,14 +214,31 @@ func (p *Pipe) Shutdown() {
 //		maxDuration: This is the maximum time the pipe should wait before processing a batch
 //		maxJobs: This is the maximum number of jobs the pipe should accept before processing a batch
 //		batchProcessor: This is the "BatchProcessor" that the pipe will use to process batches
-// returns the created pipe, and an error channel to which any errors will be sent.
-func NewPipe(maxDuration time.Duration, maxJobs int, batchProcessor BatchProcessor) (*Pipe, <-chan error) {
+// returns the created pipe, an error channel to which any errors will be sent, and an error struct.
+// If invalid arguemnts are supplied, the error struct will be populated, if not it will be nil
+func NewPipe(maxDuration time.Duration, maxJobs uint, batchProcessor BatchProcessor) (*Pipe, <-chan error, error) {
+	var err error = nil
+
+	// Validate arguments
+	switch {
+	case maxDuration < 0:
+		err = PipeCreateError{"Invalid Parameter. maxDuration must be >= 0."}
+	case maxJobs < 1:
+		err = PipeCreateError{"Invalid Parameter. maxJobs must be > 1."}
+	}
+
+	// if arg validation failed, return error.
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// initialise pipe variables
 	p := Pipe{}
 	p.maxDuration = maxDuration
 	p.maxJobs = maxJobs
 	p.batchProcessor = batchProcessor
 	p.errorCh = make(chan error)
+
 	p.jobCh = make(chan Job)
 	p.shutdownCh = make(chan bool)
 
@@ -229,5 +247,15 @@ func NewPipe(maxDuration time.Duration, maxJobs int, batchProcessor BatchProcess
 	go p.run()
 
 	// return reference to the pipe and the error channel
-	return &p, p.errorCh
+	return &p, p.errorCh, err
+}
+
+// Error struct to use if there is an error creating a pipe using the NewPipe function
+type PipeCreateError struct {
+	err string
+}
+
+// PipeCreateError method Error(). Implements error interface.
+func (t PipeCreateError) Error() string {
+	return t.err
 }

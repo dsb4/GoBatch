@@ -37,3 +37,11 @@ the arguments that it is passed. The following arguments are required:
 ## Shutting down a pipe
 To shutdown a pipe call the *Shutdown()* method. This will allow all submitted jobs to submit, terminate the pipe
 and then return.
+
+# Building and Testing
+## Building the library
+Navigate to the pipe folder
+Run the command `go build`
+## Running the test suite
+Navigate to the pipe folder
+Run the command `go test`
