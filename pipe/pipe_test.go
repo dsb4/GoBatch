@@ -5,6 +5,7 @@ package pipe
 import (
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -15,7 +16,8 @@ import (
 // Returns nil error
 type TextProcessor struct {
 	// slice containing number of jobs that were present in each batch
-	JobsPerBatch []uint
+	JobsPerBatchMu sync.Mutex
+	JobsPerBatch   []uint
 	// Sets an artificial processing time for a batch
 	ProcessingTime time.Duration
 	// Sets an error value to return
@@ -35,7 +37,9 @@ func (t TextProcessorError) Error() string {
 func (p *TextProcessor) Process(jobs []Job) ([]BatchResult, error) {
 	var err error = nil
 	// record number of jobs in batch
+	p.JobsPerBatchMu.Lock()
 	p.JobsPerBatch = append(p.JobsPerBatch, uint(len(jobs)))
+	p.JobsPerBatchMu.Unlock()
 
 	// if processing delay is set, delay
 	if p.ProcessingTime > 0 {
@@ -116,29 +120,35 @@ func TestBatching(t *testing.T) {
 	// push 6 jobs into the pipe. This should result in 2 batches of 3 jobs being processed.
 	var pl1 interface{} = "Data1"
 	j1 := NewJob(&pl1)
-	pipe.Push(j1)
+	res1 := pipe.Push(j1)
 	var pl2 interface{} = "Data2"
 	j2 := NewJob(&pl2)
-	pipe.Push(j2)
+	res2 := pipe.Push(j2)
 	var pl3 interface{} = "Data3"
 	j3 := NewJob(&pl3)
-	pipe.Push(j3)
+	res3 := pipe.Push(j3)
 	var pl4 interface{} = "Data4"
 	j4 := NewJob(&pl4)
-	pipe.Push(j4)
+	res4 := pipe.Push(j4)
 	var pl5 interface{} = "Data5"
 	j5 := NewJob(&pl5)
-	pipe.Push(j5)
+	res5 := pipe.Push(j5)
 	var pl6 interface{} = "Data6"
 	j6 := NewJob(&pl6)
 	res6 := pipe.Push(j6)
 
-	// wait for job6 to complete (not instant)
+	// wait for all jobs to complete (not instant)
+	<-res1.Complete
+	<-res2.Complete
+	<-res3.Complete
+	<-res4.Complete
+	<-res5.Complete
 	<-res6.Complete
 
 	// Expect 2 batches, each batch containing 3 jobs
 	if len(textProcessor.JobsPerBatch) != 2 {
 		t.Errorf("Got %v, wanted 2 batches to be processed", len(textProcessor.JobsPerBatch))
+	} else {
 		if textProcessor.JobsPerBatch[0] != 3 {
 			t.Errorf("Got %v, wanted 3 jobs to be in first batch", textProcessor.JobsPerBatch[0])
 		}
