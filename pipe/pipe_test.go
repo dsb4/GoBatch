@@ -1,3 +1,5 @@
+// Unit tests for pipe.go
+// Run using the command  'go test'
 package pipe
 
 import (
